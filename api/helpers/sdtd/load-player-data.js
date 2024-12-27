@@ -1,5 +1,3 @@
-var he = require('he');
-
 module.exports = {
   friendlyName: 'Load player data',
   description: 'Load player information from a 7 Days to die server',
@@ -98,9 +96,10 @@ module.exports = {
 
         let updateObj = {
           lastOnline: player.lastonline,
-          name: player.name ? he.encode(player.name) : 'Unknown',
+          name: player.name ? player.name : 'Unknown',
           ip: player.ip,
           entityId: player.entityid,
+          crossId: player.crossplatformid,
           positionX: player.position.x,
           positionY: player.position.y,
           positionZ: player.position.z,
@@ -130,7 +129,6 @@ module.exports = {
         playerProfile[0].role = await sails.helpers.sdtd.getPlayerRole(playerProfile[0].id);
 
         sails.log.verbose(`Loaded a player - ${playerProfile[0].id} - ${playerProfile[0].name} - server: ${server.name}`, { serverId: inputs.serverId, player: playerProfile[0] });
-        playerProfile[0].name = he.decode(playerProfile[0].name);
         playersToSend.push(playerProfile[0]);
       }
       let dateEnded = new Date();
@@ -168,8 +166,9 @@ async function findOrCreatePlayer(player, serverId) {
       steamId: player.steamid,
       server: serverId,
       entityId: player.entityid,
+      crossId: player.crossplatformid,
       lastOnline: player.lastonline,
-      name: player.name ? he.encode(player.name) : 'Unknown',
+      name: player.name ? player.name : 'Unknown',
       ip: player.ip,
     });
     return foundOrCreatedPlayer;

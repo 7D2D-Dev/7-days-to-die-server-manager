@@ -1,6 +1,7 @@
 const Sentry = require('@sentry/node');
 const SdtdSSE = require('./eventDetectors/7d2dSSE');
 const SdtdPolling = require('./eventDetectors/7d2dPolling');
+const SdtdSSEV1 = require('./eventDetectors/7d2dV1SSE');
 /**
  * @module 7dtdLoggingHook
  * @description Detects events on a 7dtd server.
@@ -125,18 +126,23 @@ module.exports = function sdtdLogs(sails) {
     async getEventDetectorClass(server) {
 
       try {
-        const legacyAllocsVersion = await sails.helpers.sdtd.checkModVersion('Mod Allocs MapRendering and Webinterface', server.id);
-        const allocsVersion = await sails.helpers.sdtd.checkModVersion('Mod Allocs_Webinterface', server.id);
-        const highestVersion = Math.max(legacyAllocsVersion, allocsVersion);
+        const allocsVersion = (await Promise.all([
+          sails.helpers.sdtd.checkModVersion('Mod Allocs MapRendering and Webinterface', server.id),
+          sails.helpers.sdtd.checkModVersion('Mod Allocs_Webinterface', server.id),
+        ])).find(v => !!v) || 0;
 
-        if (highestVersion < 38) {
+        if(allocsVersion > 47) {
+          return SdtdSSEV1;
+        }
+
+        if (allocsVersion < 38) {
           return SdtdPolling;
         } else {
           return SdtdSSE;
         }
       } catch (error) {
-        sails.log.warn('Could not get allocs version, defaulting to SSE', { server });
-        return SdtdSSE;
+        sails.log.warn(`Could not get allocs version, defaulting to SSEV1 - ${error}`, { server });
+        return SdtdSSEV1;
       }
 
 
@@ -175,6 +181,7 @@ module.exports = function sdtdLogs(sails) {
       });
 
       eventEmitter.on('chatMessage', function (chatMessage) {
+        if(!chatMessage.playerName) {chatMessage.playerName = chatMessage.player.name;};
         chatMessage.server = _.omit(server, 'authName', 'authToken');
         chatMessage.player = _.omit(chatMessage.player, 'inventory');
 

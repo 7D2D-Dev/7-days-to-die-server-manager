@@ -7,7 +7,8 @@ const blackListedEvents = [
   'NullReferenceException',
   'Infinity or NaN floating point numbers appear when calculating the transform matrix for a Collider',
   'IsMovementBlocked',
-  'Particle System is trying to spawn on a mesh with zero surface area'
+  'Particle System is trying to spawn on a mesh with zero surface area',
+  'VehicleManager write'
 ];
 
 class SdtdSSE extends LoggingObject {
@@ -28,6 +29,7 @@ class SdtdSSE extends LoggingObject {
     this.lastMessage = Date.now();
     this.isConnecting = false;
     this.throttled = false;
+    this.isConnected = false;
 
     this.throttledFunction.on('normal', () => {
       sails.log.debug(`SSE normal for server ${this.server.id}`, { server: this.server });
@@ -79,7 +81,7 @@ class SdtdSSE extends LoggingObject {
       this.keepAliveSent = false;
       sails.log.debug(`Trying to reconnect SSE for server ${this.server.id}`, { serverId: this.server.id });
       this.destroy();
-      this.start();
+      this.start(false);
     }
   }
 
@@ -87,7 +89,7 @@ class SdtdSSE extends LoggingObject {
     return `http${this.server.webPort === 443 ? 's' : ''}://${this.server.ip}:${this.server.webPort}/sse/log?adminuser=${this.server.authName}&admintoken=${this.server.authToken}`;
   }
 
-  start() {
+  start(sendNotification = true) {
     if (this.eventSource) {
       sails.log.warn(`Tried to start SSE for server ${this.server.id} but it was already active`, { server: this.server });
       return;
@@ -114,14 +116,28 @@ class SdtdSSE extends LoggingObject {
       }
     });
     this.eventSource.addEventListener('logLine', this.listener);
-    this.eventSource.reconnectInterval = 5000;
-    this.eventSource.onerror = e => {
+    this.eventSource.reconnectInterval = 30000;
+    this.eventSource.onerror = async e => {
       sails.log.warn(`SSE error for server ${this.server.id}`, { server: this.server, error: e });
+      if (this.isConnected) {
+        this.isConnected = false;
+        await sails.helpers.discord.sendNotification({
+          serverId: this.server.id,
+          notificationType: 'connectionLost',
+        });
+      }
     };
-    this.eventSource.onopen = () => {
+    this.eventSource.onopen = async () => {
       clearTimeout(isConnectingTimeout);
       sails.log.info(`Opened a SSE channel for server ${this.server.id}`, { server: this.server });
       this.isConnecting = false;
+      if (!this.isConnected && sendNotification) {
+        this.isConnected = true;
+        await sails.helpers.discord.sendNotification({
+          serverId: this.server.id,
+          notificationType: 'connected',
+        });
+      }
     };
   }
 
@@ -135,7 +151,7 @@ class SdtdSSE extends LoggingObject {
     this.eventSource.close();
     this.eventSource = null;
     this.isConnecting = false;
-
+    this.isConnected = false;
   }
 
   async SSEListener(data) {
